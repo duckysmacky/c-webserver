@@ -4,6 +4,12 @@
 
 #define ERR(msg, ...) { printf("[!] " msg "\n", ##__VA_ARGS__); return EXIT_FAILURE; }
 
+DWORD WINAPI clientThread(LPVOID params)
+{
+
+	return EXIT_SUCCESS;
+}
+
 int main(int argc, const char *argv[])
 {
 	WSADATA wsaData;
@@ -23,7 +29,10 @@ int main(int argc, const char *argv[])
 	addr_server.sin_port = htons(8888); // port -> 8888
 
 	// Binding port
-	if (bind(socket_open, (struct sockaddr*) &addr_server, sizeof(addr_server)) == SOCKET_ERROR) ERR("Error binding port: %d", WSAGetLastError())
+	if (
+		bind(socket_open, (struct sockaddr*) &addr_server, sizeof(addr_server))
+		== SOCKET_ERROR
+	) ERR("Error binding port: %d", WSAGetLastError())
 	printf("Port binded successfully!\n");
 
 	// Set socket to listen
@@ -32,6 +41,7 @@ int main(int argc, const char *argv[])
 	// Accept and incoming connection
 	printf("Waiting for incoming connections...\n");
 	int addrlen = sizeof(struct sockaddr_in);
+
 	while
 	(
 		(socket_connected = accept(socket_open, (struct sockaddr *) &addr_client, &addrlen))
@@ -43,9 +53,13 @@ int main(int argc, const char *argv[])
 		u_short clientPort = addr_client.sin_port;
 		printf("Client connected [%s:%d]\n", clientIp, clientPort);
 
-		//Reply to the client
+		// Reply to the client
 		char *welcomeMessage = "Connected to server!\n";
-		send(socket_connected , welcomeMessage , strlen(welcomeMessage) , 0);
+		send(socket_connected, welcomeMessage, strlen(welcomeMessage), 0);
+
+		// Create a thread for the client
+		HANDLE hClient = CreateThread(NULL, 0, clientThread, socket_connected, 0, NULL);
+		if (hClient == NULL) ERR("Error creating thread: %d\n", GetLastError())
 	}
 	if (socket_connected == INVALID_SOCKET) ERR("Port accept failed with code: %d", WSAGetLastError())
 	
