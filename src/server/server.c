@@ -4,11 +4,13 @@
 
 #define ERR(msg, ...) { printf("[!] " msg "\n", ##__VA_ARGS__); return EXIT_FAILURE; }
 
-DWORD WINAPI clientThread(LPVOID params)
-{
+typedef struct ClientInfo {
+	SOCKET client_socket;
+	char *client_ip;
+	int client_port;
+} ClientInfo, *PClientInfo;
 
-	return EXIT_SUCCESS;
-}
+DWORD WINAPI clientThread(LPVOID param);
 
 int main(int argc, const char *argv[])
 {
@@ -29,7 +31,7 @@ int main(int argc, const char *argv[])
 	addr_server.sin_port = htons(8888); // port -> 8888
 
 	// Binding port
-	if (
+	if(
 		bind(socket_open, (struct sockaddr*) &addr_server, sizeof(addr_server))
 		== SOCKET_ERROR
 	) ERR("Error binding port: %d", WSAGetLastError())
@@ -49,23 +51,70 @@ int main(int argc, const char *argv[])
 	)
 	{
 		// Get client info
-		char *clientIp = inet_ntoa(addr_client.sin_addr);
-		u_short clientPort = addr_client.sin_port;
-		printf("Client connected [%s:%d]\n", clientIp, clientPort);
+		PClientInfo cInfo = (PClientInfo) HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(PClientInfo));
+		if (cInfo == NULL) ERR("Error occured while allocating memory: %lu\n", GetLastError());
+		cInfo -> client_socket = socket_connected;
+		cInfo -> client_ip = inet_ntoa(addr_client.sin_addr);
+		cInfo -> client_port = addr_client.sin_port;
+		printf("Client connected [%s:%d]\n", cInfo -> client_ip, cInfo -> client_port);
 
 		// Reply to the client
-		char *welcomeMessage = "Connected to server!\n";
-		send(socket_connected, welcomeMessage, strlen(welcomeMessage), 0);
+		char *message = "Connected to server!\n";
+		send(socket_connected, message, strlen(message), 0);
 
 		// Create a thread for the client
-		HANDLE hClient = CreateThread(NULL, 0, clientThread, socket_connected, 0, NULL);
-		if (hClient == NULL) ERR("Error creating thread: %d\n", GetLastError())
+		HANDLE hClient = CreateThread(NULL, 0, clientThread, (LPVOID) cInfo, 0, NULL);
+		if (hClient == NULL) ERR("Error creating thread: %lu\n", GetLastError())
 	}
 	if (socket_connected == INVALID_SOCKET) ERR("Port accept failed with code: %d", WSAGetLastError())
 	
 	getchar();
+
 	closesocket(socket_open);
 	closesocket(socket_connected);
 	WSACleanup();
+
+	return EXIT_SUCCESS;
+}
+
+DWORD WINAPI clientThread(LPVOID param)
+{
+	PClientInfo cInfo;
+	SOCKET sock_current;
+	char *serverMessage, clientIn[1024];
+	size_t msgsize;
+	
+	// Import params
+	cInfo = (PClientInfo) param;
+	sock_current = cInfo -> client_socket;
+
+	// Send message
+	serverMessage = "Thread created\n";
+	send(sock_current, serverMessage, strlen(serverMessage), 0);
+
+	// Recieve message from client
+	while
+	(
+		(msgsize = recv(sock_current, clientIn, 1024, 0))
+		> 0
+	)
+	{
+		// send(sock_current, clientIn, strlen(clientIn), 0);
+		printf("[%s:%d]: %s\n", cInfo -> client_ip, cInfo -> client_port, clientIn);
+	}
+
+	// Error handling
+	if (msgsize == 0)
+	{
+		printf("Client [%s:%d] disconnected!\n", cInfo -> client_ip, cInfo -> client_port);
+
+	}
+	else if (msgsize == -1)
+	{
+		printf("Failed to read message from client [%s:%d]!\n", cInfo -> client_ip, cInfo -> client_port);
+	}
+
+	free(cInfo);
+
 	return EXIT_SUCCESS;
 }
